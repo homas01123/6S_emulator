@@ -33,7 +33,8 @@ class Interpolated_LUTs:
       'LANDSAT/LC8':'LANDSAT_OLI',
       'LANDSAT/LE7':'LANDSAT_ETM',
       'LANDSAT/LT5':'LANDSAT_TM',
-      'LANDSAT/LT4':'LANDSAT_TM'
+      'LANDSAT/LT4':'LANDSAT_TM',
+      'USER_DEFINED':'UNKNOWN'
     }
     self.py6S_sensor = self.py6S_sensor_names[self.mission]
     

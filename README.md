@@ -1,20 +1,28 @@
 ## Introduction
 
-The 6S emulator is an open-source atmospheric correction tool. It is based on the [6S](http://modis-sr.ltdri.org/pages/6SCode.html) radiative transfer model but it **runs 100x faster** with minimal additional error (i.e. < 0.5 %).
+For Remotely Sensed Optical (Multispectral/Hyperspectral) Images, The sensor acquired radiance (L) needs to be corrected for the 1. Atmoshperic gaseous transmittance (τ<sub>g</sub>), 2. Rayleigh-aerosol combined scattering in the atmoshperic column (Path radiance; L<sub>p</sub>) to calculate the surface reflectance (ρ). The theory of Radiave Transfer can be used in following way to algebrically express these quantities:
 
-This speed increase is acheived by building interpolated look-up tables. This trades set-up time for execution time. The look-up tables take a long time (i.e. hours) to build, here are some prebuilts for: [Sentinel 2](https://www.dropbox.com/s/aq873gil0ph47fm/S2A_MSI.zip?dl=1), [Landsat 8](https://www.dropbox.com/s/49ikr48d2qqwkhm/LANDSAT_OLI.zip?dl=1), [Landsat 7](https://www.dropbox.com/s/z6vv55cz5tow6tj/LANDSAT_ETM.zip?dl=1) & [Landsat 4 and 5](https://www.dropbox.com/s/uyiab5r9kl50m2f/LANDSAT_TM.zip?dl=1). You only need to build (or download) a look-up table once.
- 
-Interpolated look-up tables are the core of the 6S emulator. Essentially, they are used to calculate atmospheric correction coefficients (a, b) which convert at-sensor radiance (L) to surface reflectance (ρ) as follows:
+ρ = π(L -L<sub>p</sub>) / τ<sub>g</sub>(E<sub>dir</sub> + E<sub>dif</sub>)
 
-ρ = (L - a) / b
+where,
+
+* ρ = surface reflectance
+* L = at-sensor radiance
+* L<sub>p</sub> = path radiance (Rayleigh + Aerosol)
+* τ<sub>g</sub> = gaseous transmissivity (from surface to satellite)
+* E<sub>dir</sub> = direct solar irradiance 
+* E<sub>dif</sub> = diffuse solar irradiance
+* π = 3.1415 (pi)
+
+Algebraically rearranging, ρ can be obtained as ρ = (L - a) / b, where a = L<sub>p</sub> and b = (τ<sub>g</sub>(E<sub>dir</sub> + E<sub>dif</sub>))/π. 
+
+The L<sub>p</sub> can be obtained as a function of atmospheric column height of water vapour and Ozone (Rayleigh scattering) and Aerosol Optical Thickness (AOT) (Aerosol scattering). The τ<sub>g</sub>, E<sub>dir</sub> and E<sub>dif</sub> can climatically be approximated for the sun-sensor geometry and given time. The Python wrapper ([Py6S](https://py6s.readthedocs.io/en/latest/introduction.html) by Wilson, 2013) of Second Simulation of a Satellite Signal in the Solar Spectrum vector code ([6S](https://salsa.umd.edu/6spage.html)) (Vermote et al., 1997) has been used to approximate a and b mentioned above as a function of solar zenith angle, atmospheric column height of water vapour and ozone, AOT at 550 nanometers (nm) and the surface elevation. However, run-time simulation with Py6S is computationally extensive, especially when ran for millions of pixels in a satellite acquired image. Hence, wavelength dependent Look-Up Tables (LUTs) are obtained for a and b for a vast number of combinations of the input parameters (solar zenith angle, atmospheric column height of water vapour and ozone, AOT550 and the surface elevation). In the AC process, the input parameters are fetched as mean over the image extent from different data sources (solar zenith from metadata, water vapour from NCEP/NCAR, ozone from TOMS/OMI, AOT550 from MODIS and surface elevation from SRTM). Finally, the a and b values are interpolated from the LUT for the mean values of input parameters and the image is algebraically corrected. The interpolatable LUTs (iLUTs) are obtained from [6S emulator](https://github.com/samsammurphy/6S_emulator), which is an open-source tool to create LUTs of a and b with **100x speed** than 6S, but with minimal additional error (i.e. < 0.5 %).
 
 ### Installation
 
 ##### Quick note
 
-The installation instructions (below) are for building look-up tables. To use a pre-existing look-up table, all that is required are python3.x, numpy and scipy.
-
-We interact with 6S through an excellent Python wrapper called [Py6S](http://py6s.readthedocs.io/en/latest/index.html) and share the same dependencies. 
+The installation instructions (below) are for building look-up tables mainly. In case of use cases with pre-existing iLUTs, all that is required are python3.x, numpy and scipy.
 
 #### Recommended installation
 
@@ -24,37 +32,15 @@ The [recommended installation](http://py6s.readthedocs.io/en/latest/installation
 
 This will create a new environment that needs to be activated.
 
-#### Alternative 1: add conda-forge channel
-
-You could permanently add the conda-forge channel if you prefer to avoid (de)activating environments.
-
-`$ conda config --add channels conda-forge`
-
-`$ conda install py6s`
-
-#### Alternative 2: docker
-
-You could optionally run the following [docker](https://www.docker.com/) container instead, which has all dependencies pre-installed
-
-`$ docker run -it samsammurphy/ee-python3-jupyter-atmcorr:v1.0`
-
-then clone this repository into the container
-
-`# git clone https://github.com/samsammurphy/6S_emulator`
-
-#### Alternative 3: manual install
-
-Here are a list of all [dependencies](https://github.com/samsammurphy/6S_emulator/wiki/Dependencies) for manual installation.
-
 ### Usage
 
 #### Quick Start
 
-See the [jupyter notebook](https://github.com/samsammurphy/6S_emulator/blob/master/jupyter_notebooks/atmcorr_example.ipynb) for a quick start example of atmospheric correction. 
+See the [jupyter notebook](https://github.com/datakaveri/ugix-ard-pipelines/blob/main/jupyter_notebooks/ACX_constrained.ipynb) for an illustrated example of atmospheric correction with pre-existing iLUTs. The creation of LUTs and iLUTS are explained below.
 
 #### Building your own interpolated look-up tables
 
-It is much more bandwidth efficient to send  and receive look-up tables, and then interpolate them locally, which is why building and interpolating are handled by separate modules. To see a more complete list of examples of how to build a look-up table (for any satellite mission) see this [wiki](https://github.com/samsammurphy/6S_emulator/wiki/Build-examples). Here is a short example.
+It is much more bandwidth efficient to create user-defined look-up tables, and then interpolate them locally, which is why building and interpolating are handled by separate modules. To see a more complete list of examples of how to build a look-up table (for any satellite mission or user-defined spectral response) see this [wiki](https://github.com/samsammurphy/6S_emulator/wiki/Build-examples). Here is a short example.
 
 `$ python3 LUT_build.py --wavelength 0.42`
 
@@ -63,42 +49,3 @@ which will build a look-up table for a wavelength of 0.42 microns, it can be int
 `$ python3 LUT_interpolate.py  path/to/LUT_directory`
 
 where the 'path/to/LUT_directory' is the full path to the look-up table files ('.lut').
-
-#### Using interpolated look-up tables
-
-An interpolated look-up tables is a [pickle](https://docs.python.org/3/library/pickle.html) file of a [scipy](https://www.scipy.org/) linear n-dimensional [interpolator](https://docs.scipy.org/doc/scipy-0.19.0/reference/generated/scipy.interpolate.LinearNDInterpolator.html). It can be loaded like this:
-
-```
-import pickle
-
-fpath = 'path/to/interpolated_lookup_table.ilut'
-
-with open(fpath,"rb") as ilut_file:
-    iLUT = pickle.load(ilut_file)
-```
-
-An interpolated look-up table requires the following input variables (in order) to provide atmospheric correction coefficients:
-
-1. solar zentith [degrees] (0 - 75)
-2. water vapour [g/m2] (0 - 8.5)
-3. ozone [cm-atm] (0 - 0.8)
-4. aerosol optical thickness [unitless] (0 - 3)
-5. surface altitude [km] (0 - 7.75)
-
-In code it might look something like this
-
-`a, b = iLUT(solar_z, h2o, o3, aot, km)`
-
-where a and b are the atmospheric correction coefficients at perihelion. The look-up tables are built at perihelion (i.e. January 4th) to save space because Earth's elliptical orbit can be corrected as follows:
-
-```
-import math
-
-elliptical_orbit_correction = 0.03275104*math.cos(doy/59.66638337) + 0.96804905
-a *= elliptical_orbit_correction
-b *= elliptical_orbit_correction
-```
-
-Surface reflectance can then be calculated from at-sensor radiance:
-
-`surface_reflectance = (L - a) / b`
